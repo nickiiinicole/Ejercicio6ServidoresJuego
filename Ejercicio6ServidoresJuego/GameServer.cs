@@ -143,7 +143,7 @@ namespace Ejercicio6ServidoresJuego
                             }
                         }
                     }
-                    catch (Exception e)
+                    catch (Exception e) when (e is SocketException || e is ArgumentException || e is ArgumentNullException)
                     {
                         Console.WriteLine($"[DEBUG] Error sending message to client: {e.Message}");
                     }
