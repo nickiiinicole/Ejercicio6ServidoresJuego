@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Text;
 using System.Timers;
 using System.Threading;
 using Timer = System.Timers.Timer;
@@ -13,16 +12,18 @@ namespace Ejercicio6ServidoresJuego
 {
     internal class GameServer
     {
-        private int initialPort = 31416;
-        private int finalPort = 65535;
+        private readonly int initialPort = 31416;
+        private readonly int finalPort = 65535;
         private int port;
         private Socket serverSocket;
-        private List<Socket> clients = new List<Socket>();
-        private Dictionary<Socket, int> clientNumbers = new Dictionary<Socket, int>();
-        private static Random random = new Random();
+        private readonly List<Socket> clients = new List<Socket>();
+        private readonly Dictionary<Socket, int> clientNumbers = new Dictionary<Socket, int>();
+        private static readonly Random random = new Random();
         private bool gameStarted = false;
         private Timer timer;
-        private int countdown = 60;
+        private int countdown = 10;
+
+        private readonly object keyObject = new object();
 
         public void Init()
         {
@@ -31,7 +32,7 @@ namespace Ejercicio6ServidoresJuego
                 port = LoadPort();
                 if (port == -1)
                 {
-                    Console.WriteLine("[DEBUG] No available port found");
+                    Console.WriteLine("[DEBUG] No available port found.");
                     return;
                 }
 
@@ -66,15 +67,19 @@ namespace Ejercicio6ServidoresJuego
 
         private void Countdown(object sender, ElapsedEventArgs e)
         {
-            if (countdown == 0)
+            lock (keyObject)
             {
-                gameStarted = true;
-                Console.WriteLine("[DEBUG] Game starting...");
-                return;
+                if (countdown == 0)
+                {
+                    gameStarted = true;
+                    timer.Stop();
+                    Console.WriteLine("[DEBUG] Game starting...");
+                    DetermineWinner();
+                    return;
+                }
+                Console.WriteLine($"[DEBUG] {countdown} seconds left to join.");
+                countdown--;
             }
-
-            Console.WriteLine($"[DEBUG] {countdown} seconds left to join.");
-            countdown--;
         }
 
         private void HandleClient(Socket clientSocket)
@@ -83,49 +88,71 @@ namespace Ejercicio6ServidoresJuego
             {
                 using (NetworkStream network = new NetworkStream(clientSocket))
                 using (StreamReader sr = new StreamReader(network))
-                using (StreamWriter writer = new StreamWriter(network))
+                using (StreamWriter writer = new StreamWriter(network) { AutoFlush = true }) // 🔹 AutoFlush evita hacer `Flush()` manualmente
                 {
                     writer.WriteLine("[SERVER] Waiting for other players...");
-                    writer.Flush();
 
                     int assignedNumber = random.Next(1, 21);
-                    clientNumbers[clientSocket] = assignedNumber;
+                    lock (keyObject)
+                    {
+                        clientNumbers[clientSocket] = assignedNumber;
+                    }
 
                     writer.WriteLine($"[SERVER] Your number: {assignedNumber}");
-                    writer.Flush();
                 }
             }
             catch (Exception e) when (e is IOException || e is SocketException || e is ArgumentException || e is ArgumentNullException)
             {
                 Console.WriteLine($"[DEBUG] {e.Message}");
+                lock (keyObject)
+                {
+                    clients.Remove(clientSocket);
+                    clientNumbers.Remove(clientSocket);
+                }
+                clientSocket.Close();
             }
         }
 
         private void DetermineWinner()
         {
-            var winner = clientNumbers.OrderByDescending(kvp => kvp.Value).First();
-            Console.WriteLine($"[DEBUG] The winner is a client with number {winner.Value}");
-
-            foreach (var kvp in clientNumbers)
+            lock (keyObject)
             {
-                using (NetworkStream network = new NetworkStream(kvp.Key))
-                using (StreamWriter writer = new StreamWriter(network))
+                if (clientNumbers.Count == 0)
                 {
-                    if (kvp.Key == winner.Key)
-                    {
-                        writer.WriteLine("[SERVER] You are the winner!");
-                    }
-                    else
-                    {
-                        writer.WriteLine($"[SERVER] You lost. Winning number: {winner.Value}");
-                    }
-                    writer.Flush();
+                    Console.WriteLine("[DEBUG] No clients connected. Ending game.");
+                    return;
                 }
 
-                kvp.Key.Close();
-            }
+                var winner = clientNumbers.OrderByDescending(kvp => kvp.Value).First();
+                Console.WriteLine($"[DEBUG] The winner is a client with number {winner.Value}");
 
-            serverSocket.Close();
+                foreach (var kvp in clientNumbers)
+                {
+                    try
+                    {
+                        using (NetworkStream network = new NetworkStream(kvp.Key))
+                        using (StreamWriter writer = new StreamWriter(network) { AutoFlush = true })
+                        {
+                            if (kvp.Key == winner.Key)
+                            {
+                                writer.WriteLine("[SERVER] You are the winner!");
+                            }
+                            else
+                            {
+                                writer.WriteLine($"[SERVER] You lost. Winning number: {winner.Value}");
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine($"[DEBUG] Error sending message to client: {e.Message}");
+                    }
+
+                    kvp.Key.Close();
+                }
+
+                serverSocket.Close();
+            }
         }
 
         private int LoadPort()
@@ -150,7 +177,7 @@ namespace Ejercicio6ServidoresJuego
                 }
                 return true;
             }
-            catch (Exception e) when (e is SocketException | e is IOException | e is ArgumentException)
+            catch (Exception e) when (e is SocketException || e is IOException || e is ArgumentException)
             {
                 return false;
             }
