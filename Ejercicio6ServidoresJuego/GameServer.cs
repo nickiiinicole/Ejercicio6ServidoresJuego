@@ -77,10 +77,51 @@ namespace Ejercicio6ServidoresJuego
                     DetermineWinner();
                     return;
                 }
+
                 Console.WriteLine($"[DEBUG] {countdown} seconds left to join.");
+
+                // Lista de clientes a eliminar después de la iteración
+                List<Socket> disconnectedClients = new List<Socket>();
+
+
+                foreach (Socket clientSocket in clients)
+                {
+                    try
+                    {
+                        if (!clientSocket.Connected)
+                        {
+                            disconnectedClients.Add(clientSocket); // lo marco el cliente para eliminar después
+                            //aqui podria ahcer esto???
+                            continue; // Saltar al siguiente cliente
+                        }
+
+                        using (NetworkStream network = new NetworkStream(clientSocket))
+                        using (StreamWriter writer = new StreamWriter(network) { AutoFlush = true })
+                        {
+                            writer.WriteLine($"[SERVER] {countdown} Seconds left to join the game.");
+                        }
+                    }
+                    catch (Exception ex) when (ex is IOException || ex is SocketException || ex is ArgumentException || ex is ArgumentNullException)
+                    {
+                        Console.WriteLine($"[DEBUG] Error sending time message to client: {ex.Message}");
+                    }
+                }
+
+                foreach (Socket clientSocket in disconnectedClients)
+                {
+                    lock (keyObject)
+                    {
+                        clients.Remove(clientSocket);
+                        clientNumbers.Remove(clientSocket);
+                        clientSocket.Close();
+                        Console.WriteLine("[DEBUG] Client has disconnected.");
+                    }
+                }
+
                 countdown--;
             }
         }
+
 
         private void HandleClient(Socket clientSocket)
         {
@@ -111,6 +152,7 @@ namespace Ejercicio6ServidoresJuego
                 }
                 clientSocket.Close();
             }
+
         }
 
         private void DetermineWinner()
@@ -142,7 +184,7 @@ namespace Ejercicio6ServidoresJuego
                             }
                         }
                     }
-                    catch (Exception e) when (e is SocketException || e is ArgumentException || e is ArgumentNullException)
+                    catch (Exception e) when (e is SocketException || e is ArgumentException || e is ArgumentNullException || e is IOException)
                     {
                         Console.WriteLine($"[DEBUG] Error sending message to client: {e.Message}");
                     }
