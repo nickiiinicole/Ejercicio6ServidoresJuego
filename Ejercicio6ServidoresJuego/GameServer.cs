@@ -21,7 +21,7 @@ namespace Ejercicio6ServidoresJuego
         private static readonly Random random = new Random();
         private bool gameStarted = false;
         private Timer timer;
-        private int countdown = 10;
+        private int countdown = 20;
 
         private readonly object keyObject = new object();
 
@@ -88,7 +88,7 @@ namespace Ejercicio6ServidoresJuego
             {
                 using (NetworkStream network = new NetworkStream(clientSocket))
                 using (StreamReader sr = new StreamReader(network))
-                using (StreamWriter writer = new StreamWriter(network) { AutoFlush = true }) // 🔹 AutoFlush evita hacer `Flush()` manualmente
+                using (StreamWriter writer = new StreamWriter(network) { AutoFlush = true }) // ASI evit hacer `Flush()` manualmente
                 {
                     writer.WriteLine("[SERVER] Waiting for other players...");
 
@@ -122,11 +122,10 @@ namespace Ejercicio6ServidoresJuego
                     Console.WriteLine("[DEBUG] No clients connected. Ending game.");
                     return;
                 }
-
-                var winner = clientNumbers.OrderByDescending(kvp => kvp.Value).First();
+                KeyValuePair<Socket, int> winner = clientNumbers.OrderByDescending(kvp => kvp.Value).First();
                 Console.WriteLine($"[DEBUG] The winner is a client with number {winner.Value}");
 
-                foreach (var kvp in clientNumbers)
+                foreach (KeyValuePair<Socket, int> kvp in clientNumbers)
                 {
                     try
                     {

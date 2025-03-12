@@ -10,6 +10,8 @@ namespace Ejercicio6ServidoresJuego
     {
         static void Main(string[] args)
         {
+            GameServer server = new GameServer();
+            server.Init();
         }
     }
 }
